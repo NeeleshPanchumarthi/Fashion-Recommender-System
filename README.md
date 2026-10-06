@@ -33,7 +33,7 @@
 
 ## Overview
 
-StyleIQ is a semantic fashion search microservice. It turns a natural-language request such as *"I need a dress for a wedding"* into ranked, relevant products. It does this through query understanding, vector retrieval over Pinecone, and cross-encoder reranking. It runs over the Amazon Fashion catalog (about 826K products and 2.5M reviews);
+StyleIQ is a semantic fashion search microservice. It turns a natural-language request such as *"I need a dress for a wedding"* into ranked, relevant products. It does this through query understanding, vector retrieval over Pinecone, and cross-encoder reranking. It runs over the Amazon Fashion catalog (about 826K products and 2.5M reviews).
 
 The system has two decoupled processes built from one codebase:
 
