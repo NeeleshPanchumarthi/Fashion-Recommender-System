@@ -230,7 +230,7 @@ python -m evals.run --out evals/reports/latest.json
 
 It checks availability, error and empty-result rates, latency (p50/p95), query-understanding accuracy, result relevance, outfit completeness, and clean rejection of bad input, using a labeled golden set of 10 queries (`evals/golden.json`).
 
-**Baseline** (live index of 615,000 vectors, 30 searches, CPU-only laptop):
+**Baseline** :
 
 | Metric | Result |
 |---|---|
