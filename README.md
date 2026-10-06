@@ -47,7 +47,9 @@ A React frontend in `frontend/` is a separate client of the API.
 ## Key Features
 
 - **Semantic search:** understands intent and occasion rather than only keywords.
-- **Hybrid query understanding:** regex extraction first, with an LLM (Groq) filling the gaps.
+- **Multilingual queries:** a query in any language (for example *"robe rouge pour un mariage"*) is detected and translated to English by the LLM before search, so users can shop in their own language.
+- **Fashion-only guardrail:** non-fashion queries (for example *"wedding venues near me"*) are refused with a clear message and never reach the vector database.
+- **Hybrid query understanding:** an LLM (Groq) screens, translates, and extracts attributes in a single call, and deterministic regex extraction on the English text stays authoritative.
 - **Two-stage retrieval:** dense vector search, then a cross-encoder reranker for precision.
 - **Outfit-aware search:** general requests such as *"an outfit for a party"* return a complete look across tops, bottoms, footwear, and accessories.
 - **Review intelligence:** review scoring and sentiment analysis are computed at ingestion and shown as product insights.
@@ -76,6 +78,33 @@ A React frontend in `frontend/` is a separate client of the API.
 </p>
 
 **Search flow.** The query is understood, embedded in one batch, and searched in Pinecone once per gender pool (and per outfit group for outfit queries, in parallel). Results are reranked in a single cross-encoder batch, interleaved, and cut to `top_k`.
+
+### Multilingual Queries and the Fashion-Only Guardrail
+
+Both features share one LLM (Groq) call at the start of every search, implemented in `QueryProcessor` (`app/retrieval/query_processor.py`). The call returns whether the query is fashion-related, its language, an English translation, and the structured attributes, so supporting them adds no extra network round trip.
+
+```
+user query (any language)
+   └─ one Groq call ─► is_fashion? · language · english_query · attributes
+        ├─ not fashion ─► stop: empty results + message (no embedding, Pinecone, or reranker work)
+        └─ fashion ─────► regex extraction on the English text ─► embed ─► search ─► rerank
+```
+
+**Guardrail.** The LLM decides whether a query is about clothing, footwear, accessories, outfits, sizing, style, or what to wear for an occasion. A vocabulary check alone cannot do this: *"wedding venues near me"* contains the fashion-adjacent word "wedding", while *"robe rouge"* contains no English word at all. A refused query returns no results and this message:
+
+> Please ask a fashion-related question, such as clothing, footwear, accessories, outfits, sizing, style, or occasions.
+
+If the LLM is unavailable (no key, network failure, or an unusable answer), the guard falls back to the controlled fashion vocabulary (`FASHION_TERMS` in `app/domain/attributes/vocabularies.py`): a query containing a fashion term is searched unchanged, and anything else is refused.
+
+**Multilingual search.** The embedding model, reranker, and attribute extractors work in English, so non-English queries are translated first and everything downstream uses the English text. The response keeps the user's original `query` and adds `detected_language` and `translated_query`, and the frontend shows *"Showing results for ..."* when a translation took place.
+
+| Query | Result |
+|---|---|
+| `jeans azules para hombre` | Detected `es`, searched as *"blue jeans for men"* |
+| `wedding venues near me` | Refused with the fashion-only message, no search performed |
+| `black jeans for men` | Detected `en`, searched unchanged |
+
+LLM answers are cached per normalized query, so repeated queries make no LLM call.
 
 **Try-on flow.** `POST` validates the photo and garment URL and returns a job immediately (`202`). A background worker thread calls the Hugging Face Space. The client polls `GET` for the stage and the final image. Jobs are kept in memory for 15 minutes, and uploaded photos are never stored.
 
@@ -191,7 +220,7 @@ npm run dev
 |---|---|---|
 | `GET` | `/api/health` | Liveness check |
 | `GET` | `/api/ready` | Readiness check (models loaded, Pinecone reachable) |
-| `POST` | `/api/search` | `{"query": "...", "top_k": 10}` returns ranked products |
+| `POST` | `/api/search` | `{"query": "...", "top_k": 10}` returns ranked products, plus `detected_language`, `translated_query` (when the query was not English), and `message` with empty `results` when the query is not fashion-related |
 | `POST` | `/api/try-on` | Multipart `person_image`, `garment_image_url`, `garment_type`. Returns `202` with a job |
 | `GET` | `/api/try-on/{job_id}` | Poll the job for `stage`, `queue_position`, and `result_image` |
 
@@ -296,5 +325,3 @@ Let shoppers search with a photo instead of text. When a shopper uploads an imag
 - **Seamless follow-up:** let shoppers try on a matched item or ask for items that go with it, which links this capability to the outfit matching above.
 
 ---
-
-#
